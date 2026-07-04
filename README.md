@@ -10,8 +10,7 @@ Painel de gerenciamento SSH/Xray com integração nativa ao **Atlas API** (`pain
 ## 📦 Instalação
 
 ```bash
-wget -O install.sh https://raw.githubusercontent.com/miau4/Painel-Netsimon-4.0/main/install.sh
-bash install.sh
+sudo apt update && sudo apt upgrade -y && git clone https://github.com/miau4/Painel-Netsimon-4.0.git && chmod +x Painel-Netsimon-4.0/install.sh && bash Painel-Netsimon-4.0/install.sh
 ```
 
 Limpeza prévia (rm -rf): Garante que, se o usuário já tiver uma versão antiga ou um diretório com o mesmo nome, ele será removido antes da instalação para evitar conflitos de arquivos.
@@ -22,7 +21,7 @@ Permissões (chmod +x): Garante que o arquivo de instalação tenha permissão d
 
 Execução imediata: Já dispara o script de instalação assim que o download termina.
 ```bash
-rm -rf /root/netsimon && git clone https://github.com/miau4/Painel-Netsimon-4.0.git /root/netsimon && chmod +x /root/netsimon/install.sh && /root/netsimon/install.sh
+sudo apt update && sudo apt upgrade -y && rm -rf /root/netsimon && git clone https://github.com/miau4/Painel-Netsimon-4.0.git /root/netsimon && chmod +x /root/netsimon/install.sh && /root/netsimon/install.sh
 ```
 
 > ⚠️ **Está usando Ubuntu 20.04 ou 24.04?** O `install.sh` depende do pacote `php8.1-fpm`, que **não existe** no repositório padrão dessas versões (só no 22.04). Antes de rodar o comando de instalação acima, rode primeiro:
