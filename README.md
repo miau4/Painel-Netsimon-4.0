@@ -7,8 +7,7 @@ Painel de gerenciamento SSH/Xray com integração nativa ao **Atlas API** (`pain
 ## 📦 Instalação
 
 ```bash
-wget -O install.sh https://raw.githubusercontent.com/miau4/Painel-Netsimon-4.0/main/install.sh
-bash install.sh
+sudo apt update && sudo apt upgrade -y && wget -O install.sh https://raw.githubusercontent.com/miau4/Painel-Netsimon-4.0/main/install.sh && bash install.sh
 ```
 
 Limpeza prévia (rm -rf): Garante que, se o usuário já tiver uma versão antiga ou um diretório com o mesmo nome, ele será removido antes da instalação para evitar conflitos de arquivos.
@@ -19,7 +18,7 @@ Permissões (chmod +x): Garante que o arquivo de instalação tenha permissão d
 
 Execução imediata: Já dispara o script de instalação assim que o download termina.
 ```bash
-rm -rf /root/netsimon && git clone https://github.com/miau4/Painel-Netsimon-4.0.git /root/netsimon && chmod +x /root/netsimon/install.sh && /root/netsimon/install.sh
+sudo apt update && sudo apt upgrade -y && rm -rf /root/netsimon && git clone https://github.com/miau4/Painel-Netsimon-4.0.git /root/netsimon && chmod +x /root/netsimon/install.sh && /root/netsimon/install.sh
 ```
 
 Após instalar, acesse o painel com:
