@@ -2,7 +2,12 @@
 # ==========================================
 #   NETSIMON 4.0 - INSTALADOR (OTIMIZADO)
 #   VERSÃO CORRIGIDA PARA COMPATIBILIDADE COM DEVICE CHECK
+#   [PATCH] Corrigido travamento do apt em prompts interativos
+#           (iptables-persistent pedindo confirmação via whiptail)
 # ==========================================
+
+# [PATCH] Garante que NENHUM apt/dpkg abra prompt interativo (whiptail, debconf, etc.)
+export DEBIAN_FRONTEND=noninteractive
 
 C=$'\033[1;36m'; G=$'\033[1;32m'; R=$'\033[1;31m'; Y=$'\033[1;33m'; W=$'\033[1;37m'; NC=$'\033[0m'
 REPO="https://raw.githubusercontent.com/miau4/Painel-Netsimon-4.0/main"
@@ -31,9 +36,16 @@ echo -e "${G}OK${NC}"
 
 # 2. Dependências
 echo -ne "${W}[+] Instalando dependências... ${NC}"
+
+# [PATCH] Pré-configura o iptables-persistent para salvar as regras atuais
+# (IPv4 e IPv6) sem exibir a tela de confirmação do whiptail, que era o que
+# travava a instalação esperando um Enter que nunca chegava.
+echo "iptables-persistent iptables-persistent/autosave_v4 boolean true" | debconf-set-selections
+echo "iptables-persistent iptables-persistent/autosave_v6 boolean true" | debconf-set-selections
+
 apt update -y &>/dev/null
-apt install wget curl jq python3 python3-pip dos2unix nginx \
-    stunnel4 net-tools lsof iptables-persistent screen at -y &>/dev/null
+apt install -y wget curl jq python3 python3-pip dos2unix nginx \
+    stunnel4 net-tools lsof iptables-persistent screen at &>/dev/null
 systemctl enable --now atd &>/dev/null
 echo -e "${G}OK${NC}"
 
