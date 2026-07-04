@@ -139,6 +139,14 @@ echo -ne "${W}[+] Instalando Xray... ${NC}"
 bash <(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh) &>/dev/null
 setcap 'cap_net_bind_service=+ep' /usr/local/bin/xray 2>/dev/null
 
+# [PATCH] O instalador oficial do Xray, na linha acima, sobrescreve o dono/permissão
+# de /var/log/xray para nobody:nogroup (0600). Como o xray.service deste script roda
+# com User=root e CapabilityBoundingSet restrito (sem CAP_DAC_OVERRIDE), o processo
+# não consegue abrir esses arquivos mesmo sendo root, e falha com "permission denied".
+# Reaplica a permissão aberta DEPOIS do instalador oficial, garantindo que fique valendo.
+chown -R root:root /var/log/xray
+chmod -R 777 /var/log/xray
+
 # Gera SSL
 openssl req -x509 -nodes -newkey rsa:2048 -days 3650 \
     -subj "/C=BR/ST=SP/L=SP/O=NetSimon/CN=www.tim.com.br" \
