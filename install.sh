@@ -1,6 +1,7 @@
 #!/bin/bash
 # ==========================================
 #   NETSIMON 4.0 - INSTALADOR (OTIMIZADO)
+#   VERSÃO CORRIGIDA PARA COMPATIBILIDADE COM DEVICE CHECK
 # ==========================================
 
 C=$'\033[1;36m'; G=$'\033[1;32m'; R=$'\033[1;31m'; Y=$'\033[1;33m'; W=$'\033[1;37m'; NC=$'\033[0m'
@@ -23,7 +24,7 @@ iptables -t mangle -F && iptables -t mangle -X
 iptables -P INPUT ACCEPT
 iptables -P FORWARD ACCEPT
 iptables -P OUTPUT ACCEPT
-systemctl stop apache2 oracle-cloud-agent oracle-cloud-agent-updater nginx &>/dev/null
+systemctl stop apache2 oracle-cloud-agent oracle-cloud-agent-updater &>/dev/null
 systemctl disable apache2 oracle-cloud-agent oracle-cloud-agent-updater &>/dev/null
 apt purge apache2 -y &>/dev/null
 echo -e "${G}OK${NC}"
@@ -36,18 +37,37 @@ apt install wget curl jq python3 python3-pip dos2unix nginx \
 systemctl enable --now atd &>/dev/null
 echo -e "${G}OK${NC}"
 
-# 3. Nginx na porta 81
-echo -ne "${W}[+] Configurando Nginx (porta 81)... ${NC}"
+# 3. Nginx na porta 81 (COM SUPORTE A PHP PARA DEVICE CHECK)
+echo -ne "${W}[+] Configurando Nginx (porta 81 com PHP)... ${NC}"
 rm -f /etc/nginx/sites-enabled/default
 cat > /etc/nginx/sites-available/netsimon_web <<'EOF'
 server {
     listen 81;
     server_name _;
-    location / { root /var/www/html; index index.html; }
+
+    location / {
+        root /var/www/html;
+        index index.html;
+    }
+
+    location ~ \.php$ {
+        root /var/www/html;
+        fastcgi_pass unix:/run/php/php8.1-fpm.sock;
+        fastcgi_index index.php;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        include fastcgi_params;
+    }
 }
 EOF
 ln -sf /etc/nginx/sites-available/netsimon_web /etc/nginx/sites-enabled/
 systemctl restart nginx &>/dev/null
+echo -e "${G}OK${NC}"
+
+# 3.1 Instalar e habilitar PHP-FPM (NECESSÁRIO PARA DEVICE CHECK)
+echo -ne "${W}[+] Instalando PHP 8.1 FPM... ${NC}"
+apt install -y php8.1-cli php8.1-fpm php8.1-sqlite3 php8.1-curl &>/dev/null
+systemctl enable php8.1-fpm &>/dev/null
+systemctl start php8.1-fpm &>/dev/null
 echo -e "${G}OK${NC}"
 
 # 4. Stunnel
@@ -298,6 +318,20 @@ echo ""
 if [ ! -f /swapfile ]; then
     systemctl mask swapfile.swap &>/dev/null
 fi
+
+# 12. Preservar configurações do Device Check (se existirem)
+echo -ne "${W}[+] Verificando integridade do Device Check... ${NC}"
+if [ -f "/var/www/html/device_check.php" ] && [ -f "/var/www/html/netsimon_devices.db" ]; then
+    # Fazer backup
+    cp /var/www/html/device_check.php /var/www/html/device_check.php.bak
+    cp /var/www/html/netsimon_devices.db /var/www/html/netsimon_devices.db.bak
+    echo -e "${G}OK${NC} (Sistema de bloqueio preservado)"
+else
+    echo -e "${Y}PULADO${NC} (Device Check não instalado)"
+fi
+
+echo ""
 echo -e "${G}✅ INSTALAÇÃO NETSIMON 4.0 CONCLUÍDA!${NC}"
-echo -e "${W}Portas: ${C}443 (Xray), 80 (WS), 81 (Web), 8443 (SSL), 2000 (API interna)${NC}"
+echo -e "${W}Portas: ${C}443 (Xray), 80 (WS), 81 (Web com PHP), 8443 (SSL), 2000 (API interna)${NC}"
+echo -e "${W}Device Check: ${C}http://2.netsimon.fun:81/device_check.php${NC}"
 echo -e "${W}Digite ${C}menu${W} para começar.${NC}"
