@@ -56,7 +56,11 @@ setup_xray() {
     clear
     echo -e "${C}⚙️  Configurando Xray xHTTP TLS...${NC}"
     mkdir -p "$SSL_DIR"
-    apt update -qq && apt install jq openssl curl ufw -y &>/dev/null
+    # [PATCH] Evita qualquer prompt interativo do apt/dpkg (mesmo tipo de travamento
+    # já corrigido no install.sh), já que este script roda numa sessão própria e não
+    # herda o DEBIAN_FRONTEND definido no instalador principal.
+    export DEBIAN_FRONTEND=noninteractive
+    apt update -qq && apt install -y jq openssl curl ufw &>/dev/null
 
     openssl req -x509 -nodes -newkey rsa:2048 -days 3650 \
         -subj "/C=BR/ST=SP/L=SaoPaulo/O=NetSimon/CN=www.tim.com.br" \
