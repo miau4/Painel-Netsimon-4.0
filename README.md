@@ -2,12 +2,16 @@
 
 Painel de gerenciamento SSH/Xray com integração nativa ao **Atlas API** (`painel.netsimon.fun`), limiter híbrido avançado e controle de duplicidade por UUID.
 
+> ✅ **Versão do Ubuntu recomendada: 22.04 LTS (Jammy Jellyfish).**
+> É a única versão que já traz o `php8.1-fpm` disponível diretamente no repositório padrão, exigido pelo Device Check. Em outras versões (20.04, 24.04) é necessário um passo extra — veja a seção **"Instalação"** abaixo.
+
 ---
 
 ## 📦 Instalação
 
 ```bash
-sudo apt update && sudo apt upgrade -y && wget -O install.sh https://raw.githubusercontent.com/miau4/Painel-Netsimon-4.0/main/install.sh && bash install.sh
+wget -O install.sh https://raw.githubusercontent.com/miau4/Painel-Netsimon-4.0/main/install.sh
+bash install.sh
 ```
 
 Limpeza prévia (rm -rf): Garante que, se o usuário já tiver uma versão antiga ou um diretório com o mesmo nome, ele será removido antes da instalação para evitar conflitos de arquivos.
@@ -18,8 +22,16 @@ Permissões (chmod +x): Garante que o arquivo de instalação tenha permissão d
 
 Execução imediata: Já dispara o script de instalação assim que o download termina.
 ```bash
-sudo apt update && sudo apt upgrade -y && rm -rf /root/netsimon && git clone https://github.com/miau4/Painel-Netsimon-4.0.git /root/netsimon && chmod +x /root/netsimon/install.sh && /root/netsimon/install.sh
+rm -rf /root/netsimon && git clone https://github.com/miau4/Painel-Netsimon-4.0.git /root/netsimon && chmod +x /root/netsimon/install.sh && /root/netsimon/install.sh
 ```
+
+> ⚠️ **Está usando Ubuntu 20.04 ou 24.04?** O `install.sh` depende do pacote `php8.1-fpm`, que **não existe** no repositório padrão dessas versões (só no 22.04). Antes de rodar o comando de instalação acima, rode primeiro:
+> ```bash
+> sudo apt update && sudo apt install -y software-properties-common && sudo add-apt-repository -y ppa:ondrej/php && sudo apt update
+> ```
+> Isso adiciona o repositório PPA `ondrej/php`, que disponibiliza o `php8.1-fpm` para instalação. Depois disso, rode o comando de instalação do Netsimon normalmente.
+>
+> Se estiver no **Ubuntu 22.04 LTS**, pode ignorar esse passo — o `php8.1-fpm` já vem disponível por padrão.
 
 Após instalar, acesse o painel com:
 ```bash
