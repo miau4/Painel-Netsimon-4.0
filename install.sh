@@ -110,6 +110,17 @@ touch /var/log/xray/access.log /var/log/xray/error.log
 chmod -R 777 /var/log/xray
 touch "$BASE/usuarios.db"
 touch "/etc/xray-manager/blocked.db"
+
+# [PATCH] O painel Atlas detecta usuários "online" via uma sonda SSH própria
+# (onlines.php/updateon.php) que lê o log em /var/log/v2ray/access.log — um
+# caminho legado de quando o painel usava v2ray em vez de Xray. Sem isso, o
+# Atlas nunca encontra o log e ninguém aparece online, mesmo com tudo certo.
+# Criamos um symlink apontando pro log real do Xray. Só cria se não houver
+# nada real nesse caminho ainda (evita sobrescrever uma instalação antiga
+# de v2ray, se existir).
+if [ ! -e "/var/log/v2ray" ]; then
+    ln -s /var/log/xray /var/log/v2ray
+fi
 echo -e "${G}OK${NC}"
 
 # 6. Download dos módulos
