@@ -13,6 +13,7 @@ ATLAS_URL="https://painel.netsimon.fun/core/apiatlas.php"
 ATLAS_KEY_FILE="/etc/painel/atlas.key"
 USERDB="/etc/painel/usuarios.db"
 XRAY_CONF="/usr/local/etc/xray/config.json"
+BASE="/etc/painel"
 
 # atlas_sync_cron.sh (rodado via cron a cada minuto e no boot) só dá
 # source neste arquivo, não em adduser.sh/xray.sh — por isso a lib
@@ -143,7 +144,25 @@ atlas_criar_rev() {
 # no painel Atlas (painel.netsimon.fun) precisam ganhar conta
 # Linux + UUID Xray localmente para que o túnel funcione e para
 # que apareçam em "Listar Usuários" / no Limiter.
-# Retorna uma linha de resumo "N novo(s), M atualizado(s)".
+# Retorna uma linha de resumo "N novo(s), M atualizado(s), P removido(s)".
+#
+# [NOVO] REMOÇÃO AUTOMÁTICA DE USUÁRIOS QUE SUMIRAM DO ATLAS
+# A documentação oficial da API (module=userget/criaruser/criarteste/
+# renewuser/renewrev/deviceclean/createrev/notificado/onlines/
+# onlinesadm) NÃO tem nenhum módulo de exclusão nem webhook — ou seja,
+# não existe forma do Atlas "avisar" o servidor quando um usuário é
+# apagado por lá (manual ou por expiração). A única forma viável é
+# comparar, a cada rodada deste sync (cron de 1 em 1 minuto), quem
+# existe localmente mas não veio mais na resposta do Atlas, e remover.
+#
+# TRAVA DE SEGURANÇA (única, e não é opcional): só removemos se isso
+# NÃO apagar 100% da base local de uma vez. Se justamente NENHUM login
+# local aparecer na resposta do Atlas nesta checagem, é sinal muito
+# mais forte de falha pontual da API (timeout parcial, erro momentâneo
+# que ainda devolve JSON válido, porém vazio ou incompleto) do que de
+# um esvaziamento real da base inteira — então abortamos a remoção
+# daquela rodada e só logamos um alerta crítico. Uma remoção parcial
+# (1, 5, 50 usuários) sempre segue normalmente, sem essa trava.
 # -------------------------------------------------------
 atlas_sync_users() {
     local resp
@@ -181,10 +200,18 @@ for u in data:
     print(login + '|' + senha + '|' + expira + '|' + limite + '|' + uuidat)
 " 2>/dev/null)
 
-    [ -z "$linhas" ] && { echo "0 novo(s), 0 atualizado(s)"; return 0; }
+    if [ -z "$linhas" ]; then
+        # Resposta veio vazia (0 usuários no Atlas). Não criamos/atualizamos
+        # nada, e — por segurança — também não removemos nada localmente
+        # nesta rodada (ver trava de segurança no cabeçalho da função).
+        echo "[ATLAS] AVISO: resposta do Atlas veio sem nenhum usuário nesta checagem; nenhuma criação/remoção foi feita por segurança." >&2
+        echo "0 novo(s), 0 atualizado(s), 0 removido(s)"
+        return 0
+    fi
 
     local novos=0
     local atualizados=0
+    local removidos=0
     [ ! -f "$USERDB" ] && touch "$USERDB"
 
     while IFS='|' read -r login senha expira limite uuidat; do
@@ -267,9 +294,43 @@ for u in data:
         fi
     done <<< "$linhas"
 
+    # ---------------------------------------------------------
+    # REMOÇÃO: usuários locais que sumiram da resposta do Atlas
+    # (ver explicação completa e a trava de segurança no cabeçalho
+    # da função). Só roda se o USERDB tiver algo pra comparar.
+    # ---------------------------------------------------------
+    if [ -s "$USERDB" ]; then
+        local local_tmp atlas_tmp missing_tmp total_local total_missing sumido
+        local_tmp=$(mktemp)
+        atlas_tmp=$(mktemp)
+        missing_tmp=$(mktemp)
+
+        cut -d'|' -f1 "$USERDB" 2>/dev/null | grep -v '^$' | sort -u > "$local_tmp"
+        echo "$linhas" | cut -d'|' -f1 | grep -v '^$' | sort -u > "$atlas_tmp"
+        comm -23 "$local_tmp" "$atlas_tmp" > "$missing_tmp"
+
+        total_local=$(wc -l < "$local_tmp")
+        total_missing=$(wc -l < "$missing_tmp")
+
+        if [ "$total_missing" -gt 0 ]; then
+            if [ "$total_missing" -eq "$total_local" ]; then
+                echo "[ATLAS] ALERTA CRÍTICO: os $total_local usuário(s) locais não apareceram na resposta do Atlas nesta checagem — exclusão automática abortada por segurança (possível falha momentânea da API). Verifique manualmente se necessário." >&2
+            else
+                while IFS= read -r sumido; do
+                    [ -z "$sumido" ] && continue
+                    bash "$BASE/deluser.sh" "$sumido" --auto
+                    echo "[ATLAS] AUTO: usuário '$sumido' não existe mais no Atlas — removido do servidor (detectado via sync de 1min)." >&2
+                    ((removidos++))
+                done < "$missing_tmp"
+            fi
+        fi
+
+        rm -f "$local_tmp" "$atlas_tmp" "$missing_tmp"
+    fi
+
     [ "$novos" -gt 0 ] && systemctl restart xray &>/dev/null
 
-    echo "$novos novo(s), $atualizados atualizado(s)"
+    echo "$novos novo(s), $atualizados atualizado(s), $removidos removido(s)"
 }
 
 # -------------------------------------------------------
