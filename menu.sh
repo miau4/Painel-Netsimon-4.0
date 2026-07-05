@@ -6,6 +6,18 @@
 # Quando o timer expira sem input, atualiza só as linhas dinâmicas
 # (sem clear, sem background process, sem interferência no cursor).
 # Input: read -r aguarda Enter — Delete/Backspace/Ctrl+C funcionam.
+#
+# [REESTRUTURAÇÃO] Menu principal reduzido a 6 opções. As antigas
+# 01-11/22 opções agora vivem em 3 submenus:
+#   01) Gerenciar Usuários  -> menu_usuarios()
+#   02) Gerenciar Conexões  -> menu_conexoes()
+#   05) EXTRAS              -> menu_extras()
+# "Reiniciar Xray" saiu do menu principal pois o Xray Manager (dentro
+# de Gerenciar Conexões) já tem suas próprias opções [4] Reiniciar e
+# [5] Parar. "Excluir Expirados" é novo: varre o usuarios.db por data
+# de expiração vencida e chama "deluser.sh <user> --auto" pra cada um
+# (mesmo mecanismo de auto-remoção que o addtest.sh já usa via 'at'),
+# com uma única confirmação s/n pro lote inteiro.
 
 BASE="/etc/painel"
 USERDB="/etc/painel/usuarios.db"
@@ -15,10 +27,13 @@ NS_CACHE_IP="/tmp/ns_cached_ip"
 NS_CACHE_XP="/tmp/ns_xp"
 
 # Posições das linhas dinâmicas (1-indexadas, contadas após o clear):
+# Continuam nas mesmas linhas de antes porque tudo que vem ANTES do
+# bloco de opções (cabeçalho, contadores, IP/CPU/RAM/DISK) não mudou
+# de tamanho — só o bloco de opções (linhas 13+) encolheu.
 readonly ROW_HORA=5
 readonly ROW_CPU=9
 readonly ROW_RAM=10
-readonly ROW_PROMPT=25
+readonly ROW_PROMPT=20
 
 P=$'\033[1;35m'; G=$'\033[1;32m'; GD=$'\033[0;32m'; R=$'\033[1;31m'
 Y=$'\033[1;33m'; W=$'\033[1;37m'; C=$'\033[1;36m'; B=$'\033[1;34m'
@@ -112,7 +127,7 @@ do_update() {
     printf "\0338"  # restaura o cursor exatamente onde estava antes da atualização
 }
 
-# ── Desenho completo da tela (executado 1x por ciclo de input) ────
+# ── Desenho completo da tela principal (executado 1x por ciclo de input) ─
 draw_full() {
     clear
     local cpu ram disk hora ip xp lmt
@@ -151,21 +166,16 @@ draw_full() {
     printf "${P}║${NC} DISK "; bar "$disk"; echo
     # ROW 12
     echo -e "${P}╠══════════════════════════════════════════════════════════════${NC}"
-    # ROWS 13-24
-    printf "${P}║${T} 01) Criar Usuário              ${P}│${T} 12) Reiniciar Xray              ${NC}\n"
-    printf "${P}║${T} 02) Criar Teste                ${P}│${T} 13) Reparar Sistema             ${NC}\n"
-    printf "${P}║${T} 03) Remover Usuário            ${P}│${T} 14) Ativar Limiter              ${NC}\n"
-    printf "${P}║${T} 04) Listar Usuários            ${P}│${T} 15) Parar Limiter               ${NC}\n"
-    printf "${P}║${T} 05) Usuários Online            ${P}│${T} 16) Teste Velocidade            ${NC}\n"
-    printf "${P}║${T} 06) Renovar Usuário            ${P}│${T} 17) WebSocket Manager           ${NC}\n"
-    printf "${P}║${T} 07) Renovar Revendedor         ${P}│${T} 18) SlowDNS Manager             ${NC}\n"
-    printf "${P}║${T} 08) Ver Bloqueados             ${P}│${T} 19) Xray Manager                ${NC}\n"
-    printf "${P}║${T} 09) Desbloquear Usuário        ${P}│${T} 20) Status VPS                  ${NC}\n"
-    printf "${P}║${T} 10) Limpar Bloqueios           ${P}│${T} 21) Ver Logs                    ${NC}\n"
-    printf "${P}║${T} 11) Backup Config              ${P}│${T} 22) Atlas Manager               ${NC}\n"
-    # ROW 25
+    # ROWS 13-18 — menu principal reduzido
+    printf "${P}║${T} 01) Gerenciar Usuários${NC}\n"
+    printf "${P}║${T} 02) Gerenciar Conexões${NC}\n"
+    printf "${P}║${T} 03) Status VPS${NC}\n"
+    printf "${P}║${T} 04) Teste Velocidade${NC}\n"
+    printf "${P}║${T} 05) EXTRAS${NC}\n"
+    printf "${P}║${T} 06) Reparar Sistema${NC}\n"
+    # ROW 19
     echo -e "${P}╚══════════════════════════════════════════════════════════════${NC}"
-    # ROW 26 — sem newline; cursor fica aqui para o read
+    # ROW 20 — sem newline; cursor fica aqui para o read
     printf "${O}✨ Opção: ${NC}"
 }
 
@@ -181,6 +191,233 @@ refresh_cache() {
     fi
 }
 
+# ══════════════════════════════════════════════════════════════════
+#  SUBMENU: GERENCIAR USUÁRIOS
+# ══════════════════════════════════════════════════════════════════
+menu_usuarios() {
+    while true; do
+        clear
+        echo -e "${P}╔══════════════════════════════════════════════════════════════╗${NC}"
+        echo -e "${P}║${W}                 👤 GERENCIAR USUÁRIOS                        ${P}║${NC}"
+        echo -e "${P}╠══════════════════════════════════════════════════════════════╣${NC}"
+        printf "${P}║${NC} ${C}Users:${O} %-4s ${P}│${C} Online:${G} %-4s ${P}│${C} Expirados:${R} %-4s${NC}\n" \
+            "$(get_total)" "$(get_online)" "$(get_expired)"
+        echo -e "${P}╠══════════════════════════════════════════════════════════════╣${NC}"
+        echo -e "${P}║${T}  1)${NC} Criar Usuário"
+        echo -e "${P}║${T}  2)${NC} Criar Teste"
+        echo -e "${P}║${T}  3)${NC} 🗑️  Excluir Expirados"
+        echo -e "${P}║${T}  4)${NC} Remover Usuário"
+        echo -e "${P}║${T}  5)${NC} Listar Usuários"
+        echo -e "${P}║${T}  6)${NC} Usuários Online"
+        echo -e "${P}║${T}  7)${NC} Renovar Usuário"
+        echo -e "${P}║${T}  8)${NC} Renovar Revendedor"
+        echo -e "${P}║${T}  9)${NC} Ver Bloqueados"
+        echo -e "${P}║${T} 10)${NC} Desbloquear Usuário"
+        echo -e "${P}║${T} 11)${NC} Limpar Bloqueios"
+        echo -e "${P}║${R}  0)${NC} Voltar"
+        echo -e "${P}╚══════════════════════════════════════════════════════════════╝${NC}"
+        echo -ne "${Y} Escolha: ${NC}"; read -r uop
+
+        case "$uop" in
+            1) bash "$BASE/adduser.sh" ;;
+            2) bash "$BASE/addtest.sh" ;;
+            3)
+                clear
+                echo -e "${P}╔══════════════════════════════════════════════════════════════╗${NC}"
+                echo -e "${P}║${W}            🗑️  EXCLUIR USUÁRIOS EXPIRADOS                    ${P}║${NC}"
+                echo -e "${P}╚══════════════════════════════════════════════════════════════╝${NC}"
+
+                if [ ! -s "$USERDB" ]; then
+                    echo -e "\n${Y}Banco de dados vazio.${NC}"
+                    read -rp "ENTER para voltar..."; continue
+                fi
+
+                hoje=$(date +%s)
+                expirados=()
+                printf "\n${W}%-15s %-20s${NC}\n" "USUÁRIO" "VENCEU EM"
+                echo -e "${P}──────────────────────────────────────────────${NC}"
+                while IFS='|' read -r eu _ eexp _ _; do
+                    [ -z "$eu" ] && continue
+                    es=$(date -d "$eexp" +%s 2>/dev/null)
+                    if [[ -n "$es" && "$es" -lt "$hoje" ]]; then
+                        expirados+=("$eu")
+                        printf "${R}%-15s${NC} ${Y}%-20s${NC}\n" "$eu" "$eexp"
+                    fi
+                done < "$USERDB"
+
+                if [ "${#expirados[@]}" -eq 0 ]; then
+                    echo -e "\n${G}Nenhum usuário expirado no momento.${NC}"
+                    read -rp "ENTER para voltar..."; continue
+                fi
+
+                echo -e "${P}──────────────────────────────────────────────${NC}"
+                echo -e "${W}Total de expirados: ${R}${#expirados[@]}${NC}"
+                echo -ne "\n${R}⚠️  Excluir TODOS os usuários listados acima? (s/n): ${NC}"
+                read -r uconf
+                if [[ "$uconf" != "s" ]]; then
+                    echo -e "${Y}Operação cancelada.${NC}"; sleep 2; continue
+                fi
+
+                for eu in "${expirados[@]}"; do
+                    echo -ne "${W} -> Removendo: ${C}$eu... ${NC}"
+                    bash "$BASE/deluser.sh" "$eu" --auto
+                    echo -e "${G}OK${NC}"
+                done
+                echo -e "\n${G}✅ ${#expirados[@]} usuário(s) expirado(s) removido(s)!${NC}"
+                read -rp "ENTER para voltar..." ;;
+            4) bash "$BASE/deluser.sh" ;;
+            5)
+                clear
+                echo -e "${P}╔══════════════════════════════════════════════════════════════════╗${NC}"
+                echo -e "${P}║${NC} ${O} #   USUÁRIO    SENHA       UUID             DATA          LIM.${NC}"
+                echo -e "${P}╠══════════════════════════════════════════════════════════════════╣${NC}"
+                if [ -s "$USERDB" ]; then
+                    local num=0
+                    # Lê na ordem exata do arquivo (= ordem de criação, sem sort)
+                    while IFS='|' read -r luser luuid lexp lpass llim; do
+                        ((num++))
+                        ldata_fmt=$(date -d "$lexp" +"%d/%m/%y %H:%M" 2>/dev/null || echo "--/--")
+                        luuid_curto="${luuid:0:8}..."
+                        printf "${P}║${W} %-3s %-10s %-11s %-16s %-13s %-4s${NC}\n" \
+                            "$num" "$luser" "$lpass" "$luuid_curto" "$ldata_fmt" "$llim"
+                    done < "$USERDB"
+                else
+                    echo -e "${P}║${R}                  NENHUM USUÁRIO ENCONTRADO!                        ${NC}"
+                fi
+                echo -e "${P}╚══════════════════════════════════════════════════════════════════╝${NC}"
+                read -rp "Pressione ENTER para voltar..." ;;
+            6) bash "$BASE/online.sh" ;;
+            7)
+                clear
+                echo -e "${P}╔══════════════════════════════════════════════════════════════╗${NC}"
+                echo -e "${P}║${W}                  🔄 RENOVAR USUÁRIO                          ${P}║${NC}"
+                echo -e "${P}╚══════════════════════════════════════════════════════════════╝${NC}"
+                read -rp " Usuário a renovar: " ruser
+                if [ -n "$ruser" ]; then
+                    resp=$(atlas_renovar_user "$ruser")
+                    echo -e "${C}Atlas: $resp${NC}"
+                    echo -e "${Y}Sincronizando dados locais...${NC}"
+                    result=$(atlas_sync_users 2>&1)
+                    echo -e "${G}✅ Concluído! ($result)${NC}"
+                fi
+                read -rp "ENTER para voltar..." ;;
+            8)
+                clear
+                echo -e "${P}╔══════════════════════════════════════════════════════════════╗${NC}"
+                echo -e "${P}║${W}                🔄 RENOVAR REVENDEDOR                         ${P}║${NC}"
+                echo -e "${P}╚══════════════════════════════════════════════════════════════╝${NC}"
+                read -rp " Revendedor a renovar: " rrev
+                if [ -n "$rrev" ]; then
+                    resp=$(atlas_renovar_rev "$rrev")
+                    echo -e "${C}Atlas: $resp${NC}"
+                fi
+                read -rp "ENTER para voltar..." ;;
+            9)
+                clear
+                echo -e "${P}╔═══════════════════════════════╗${NC}"
+                echo -e "${P}║${W}       USUÁRIOS BLOQUEADOS      ${P}║${NC}"
+                echo -e "${P}╚═══════════════════════════════╝${NC}"
+                if [ -s "$BLOCKED" ]; then
+                    printf "${W}%-20s %-18s %s${NC}\n" "USUÁRIO" "DATA" "MOTIVO"
+                    echo -e "${P}──────────────────────────────────────────────${NC}"
+                    while IFS='|' read -r bu bd bm; do
+                        printf "${R}%-20s ${Y}%-18s ${C}%s${NC}\n" "$bu" "$bd" "$bm"
+                    done < "$BLOCKED"
+                else
+                    echo -e "${Y}Nenhum bloqueio registrado.${NC}"
+                fi
+                read -rp "ENTER para voltar..." ;;
+            10) bash "$BASE/unblock.sh" ;;
+            11)
+                : > "$BLOCKED"
+                echo -e "${G}✅ Todos os bloqueios removidos!${NC}"; sleep 2 ;;
+            0) return ;;
+            "") ;;
+            *) echo -e "${R}Opção inválida: '$uop'${NC}"; sleep 1 ;;
+        esac
+    done
+}
+
+# ══════════════════════════════════════════════════════════════════
+#  SUBMENU: GERENCIAR CONEXÕES
+# ══════════════════════════════════════════════════════════════════
+menu_conexoes() {
+    while true; do
+        clear
+        echo -e "${P}╔══════════════════════════════════════════════════════════════╗${NC}"
+        echo -e "${P}║${W}                🔌 GERENCIAR CONEXÕES                         ${P}║${NC}"
+        echo -e "${P}╠══════════════════════════════════════════════════════════════╣${NC}"
+        echo -e "${P}║${T} 1)${NC} WebSocket Manager"
+        echo -e "${P}║${T} 2)${NC} SlowDNS Manager"
+        echo -e "${P}║${T} 3)${NC} Xray Manager"
+        echo -e "${P}║${R} 0)${NC} Voltar"
+        echo -e "${P}╚══════════════════════════════════════════════════════════════╝${NC}"
+        echo -ne "${Y} Escolha: ${NC}"; read -r cop
+
+        case "$cop" in
+            1) bash "$BASE/websocket.sh" ;;
+            2) bash "$BASE/slowdns-server.sh" ;;
+            3) bash "$BASE/xray.sh" ;;
+            0) return ;;
+            "") ;;
+            *) echo -e "${R}Opção inválida: '$cop'${NC}"; sleep 1 ;;
+        esac
+    done
+}
+
+# ══════════════════════════════════════════════════════════════════
+#  SUBMENU: EXTRAS
+# ══════════════════════════════════════════════════════════════════
+menu_extras() {
+    while true; do
+        clear
+        echo -e "${P}╔══════════════════════════════════════════════════════════════╗${NC}"
+        echo -e "${P}║${W}                     ⚙️  EXTRAS                               ${P}║${NC}"
+        echo -e "${P}╠══════════════════════════════════════════════════════════════╣${NC}"
+        echo -e "${P}║${T} 1)${NC} Ativar Limiter"
+        echo -e "${P}║${T} 2)${NC} Parar Limiter"
+        echo -e "${P}║${T} 3)${NC} Backup Config"
+        echo -e "${P}║${T} 4)${NC} Ver Logs"
+        echo -e "${P}║${T} 5)${NC} Atlas Manager"
+        echo -e "${P}║${R} 0)${NC} Voltar"
+        echo -e "${P}╚══════════════════════════════════════════════════════════════╝${NC}"
+        echo -ne "${Y} Escolha: ${NC}"; read -r xop
+
+        case "$xop" in
+            1)
+                screen -dmS limitador bash "$BASE/limit.sh" 2>/dev/null
+                echo -e "${G}✅ Limiter ativado!${NC}"; sleep 1 ;;
+            2)
+                pkill -f limit.sh 2>/dev/null; screen -wipe >/dev/null 2>&1
+                echo -e "${R}⛔ Limiter parado!${NC}"; sleep 1 ;;
+            3)
+                clear
+                BKP="/root/backup_netsimon_$(date +%d%m%y_%H%M).tar.gz"
+                tar -czf "$BKP" "$BASE" "/usr/local/etc/xray" "/etc/xray-manager" 2>/dev/null
+                echo -e "${G}✅ Backup: $BKP${NC}"; sleep 3 ;;
+            4)
+                clear
+                echo -e "${P}══════════════ LOGS DO SISTEMA ══════════════${NC}"
+                if [ -s /var/log/xray/access.log ]; then
+                    echo -e "${W}Xray (últimas 15 entradas):${NC}"
+                    tail -n 15 /var/log/xray/access.log \
+                        | sed "s/accepted/${G}accepted${NC}/g" \
+                        | sed "s/failed/${R}failed${NC}/g"
+                fi
+                echo -e "${P}──────────────────────────────────────────────${NC}"
+                if [ -s /var/log/netsimon_limit.log ]; then
+                    echo -e "${W}Limiter (últimas 10 entradas):${NC}"
+                    tail -n 10 /var/log/netsimon_limit.log
+                fi
+                read -rp "ENTER para voltar..." ;;
+            5) atlas_menu ;;
+            0) return ;;
+            "") ;;
+            *) echo -e "${R}Opção inválida: '$xop'${NC}"; sleep 1 ;;
+        esac
+    done
+}
+
 # ── LOOP PRINCIPAL ────────────────────────────────────────────────
 ip_timer=0
 refresh_cache &   # busca IP em background para não travar o primeiro desenho
@@ -193,7 +430,7 @@ while true; do
     fi
     ((ip_timer--))
 
-    draw_full   # limpa tela e desenha tudo 1x; cursor fica em ROW 26 após "Opção: "
+    draw_full   # limpa tela e desenha tudo 1x; cursor fica em ROW_PROMPT após "Opção: "
 
     # Aguarda input com timeout de 1 segundo.
     # ret=0   → usuário pressionou Enter (input recebido)
@@ -213,114 +450,16 @@ while true; do
     echo ""   # desce uma linha antes de processar
 
     case "$op" in
-        1|01) bash "$BASE/adduser.sh" ;;
-        2|02) bash "$BASE/addtest.sh" ;;
-        3|03) bash "$BASE/deluser.sh" ;;
+        1|01) menu_usuarios ;;
+        2|02) menu_conexoes ;;
+        3|03) bash "$BASE/monitor.sh" ;;
         4|04)
-            clear
-            echo -e "${P}╔══════════════════════════════════════════════════════════════════╗${NC}"
-            echo -e "${P}║${NC} ${O} #   USUÁRIO    SENHA       UUID             DATA          LIM.${NC}"
-            echo -e "${P}╠══════════════════════════════════════════════════════════════════╣${NC}"
-            if [ -s "$USERDB" ]; then
-                local num=0
-                # Lê na ordem exata do arquivo (= ordem de criação, sem sort)
-                while IFS='|' read -r user uuid exp pass lim; do
-                    ((num++))
-                    data_fmt=$(date -d "$exp" +"%d/%m/%y %H:%M" 2>/dev/null || echo "--/--")
-                    uuid_curto="${uuid:0:8}..."
-                    printf "${P}║${W} %-3s %-10s %-11s %-16s %-13s %-4s${NC}\n" \
-                        "$num" "$user" "$pass" "$uuid_curto" "$data_fmt" "$lim"
-                done < "$USERDB"
-            else
-                echo -e "${P}║${R}                  NENHUM USUÁRIO ENCONTRADO!                        ${NC}"
-            fi
-            echo -e "${P}╚══════════════════════════════════════════════════════════════════╝${NC}"
-            read -rp "Pressione ENTER para voltar..." ;;
-        5|05) bash "$BASE/online.sh" ;;
-        6|06)
-            clear
-            echo -e "${P}╔══════════════════════════════════════════════════════════════╗${NC}"
-            echo -e "${P}║${W}                  🔄 RENOVAR USUÁRIO                          ${P}║${NC}"
-            echo -e "${P}╚══════════════════════════════════════════════════════════════╝${NC}"
-            read -rp " Usuário a renovar: " ruser
-            if [ -n "$ruser" ]; then
-                resp=$(atlas_renovar_user "$ruser")
-                echo -e "${C}Atlas: $resp${NC}"
-                echo -e "${Y}Sincronizando dados locais...${NC}"
-                result=$(atlas_sync_users 2>&1)
-                echo -e "${G}✅ Concluído! ($result)${NC}"
-            fi
-            read -rp "ENTER para voltar..." ;;
-        7|07)
-            clear
-            echo -e "${P}╔══════════════════════════════════════════════════════════════╗${NC}"
-            echo -e "${P}║${W}                🔄 RENOVAR REVENDEDOR                         ${P}║${NC}"
-            echo -e "${P}╚══════════════════════════════════════════════════════════════╝${NC}"
-            read -rp " Revendedor a renovar: " rrev
-            if [ -n "$rrev" ]; then
-                resp=$(atlas_renovar_rev "$rrev")
-                echo -e "${C}Atlas: $resp${NC}"
-            fi
-            read -rp "ENTER para voltar..." ;;
-        8|08)
-            clear
-            echo -e "${P}╔══════════════════════════════╗${NC}"
-            echo -e "${P}║${W}       USUÁRIOS BLOQUEADOS     ${P}║${NC}"
-            echo -e "${P}╚══════════════════════════════╝${NC}"
-            if [ -s "$BLOCKED" ]; then
-                printf "${W}%-20s %-18s %s${NC}\n" "USUÁRIO" "DATA" "MOTIVO"
-                echo -e "${P}──────────────────────────────────────────────${NC}"
-                while IFS='|' read -r u d m; do
-                    printf "${R}%-20s ${Y}%-18s ${C}%s${NC}\n" "$u" "$d" "$m"
-                done < "$BLOCKED"
-            else
-                echo -e "${Y}Nenhum bloqueio registrado.${NC}"
-            fi
-            read -rp "ENTER para voltar..." ;;
-        9|09) bash "$BASE/unblock.sh" ;;
-        10)
-            : > "$BLOCKED"
-            echo -e "${G}✅ Todos os bloqueios removidos!${NC}"; sleep 2 ;;
-        11)
-            clear
-            BKP="/root/backup_netsimon_$(date +%d%m%y_%H%M).tar.gz"
-            tar -czf "$BKP" "$BASE" "/usr/local/etc/xray" "/etc/xray-manager" 2>/dev/null
-            echo -e "${G}✅ Backup: $BKP${NC}"; sleep 3 ;;
-        12)
-            systemctl restart xray 2>/dev/null
-            echo -e "${G}✅ Xray reiniciado!${NC}"; sleep 1 ;;
-        13) bash "$BASE/repair.sh" ;;
-        14)
-            screen -dmS limitador bash "$BASE/limit.sh" 2>/dev/null
-            echo -e "${G}✅ Limiter ativado!${NC}"; sleep 1 ;;
-        15)
-            pkill -f limit.sh 2>/dev/null; screen -wipe >/dev/null 2>&1
-            echo -e "${R}⛔ Limiter parado!${NC}"; sleep 1 ;;
-        16)
             clear
             which speedtest-cli >/dev/null 2>&1 || apt-get install -y speedtest-cli >/dev/null 2>&1
             speedtest-cli --simple 2>&1
             read -rp "ENTER para voltar..." ;;
-        17) bash "$BASE/websocket.sh" ;;
-        18) bash "$BASE/slowdns-server.sh" ;;
-        19) bash "$BASE/xray.sh" ;;
-        20) bash "$BASE/monitor.sh" ;;
-        21)
-            clear
-            echo -e "${P}══════════════ LOGS DO SISTEMA ══════════════${NC}"
-            if [ -s /var/log/xray/access.log ]; then
-                echo -e "${W}Xray (últimas 15 entradas):${NC}"
-                tail -n 15 /var/log/xray/access.log \
-                    | sed "s/accepted/${G}accepted${NC}/g" \
-                    | sed "s/failed/${R}failed${NC}/g"
-            fi
-            echo -e "${P}──────────────────────────────────────────────${NC}"
-            if [ -s /var/log/netsimon_limit.log ]; then
-                echo -e "${W}Limiter (últimas 10 entradas):${NC}"
-                tail -n 10 /var/log/netsimon_limit.log
-            fi
-            read -rp "ENTER para voltar..." ;;
-        22) atlas_menu ;;
+        5|05) menu_extras ;;
+        6|06) bash "$BASE/repair.sh" ;;
         "")  ;;   # Enter em branco — apenas redesenha
         *) echo -e "${R}Opção inválida: '$op'${NC}"; sleep 1 ;;
     esac
