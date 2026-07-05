@@ -205,7 +205,7 @@ menu_usuarios() {
         echo -e "${P}╠══════════════════════════════════════════════════════════════╣${NC}"
         echo -e "${P}║${T}  1)${NC} Criar Usuário"
         echo -e "${P}║${T}  2)${NC} Criar Teste"
-        echo -e "${P}║${T}  3)${NC} 🗑️  Excluir Expirados"
+        echo -e "${P}║${T}  3)${NC} Excluir Expirados"
         echo -e "${P}║${T}  4)${NC} Remover Usuário"
         echo -e "${P}║${T}  5)${NC} Listar Usuários"
         echo -e "${P}║${T}  6)${NC} Usuários Online"
